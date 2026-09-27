@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { callPlatform } from "@/lib/platform";
 import type { FormState } from "@/lib/types";
 
 async function origin() {
@@ -43,25 +44,21 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   if (!email.includes("@")) return { error: "Informe um e-mail válido." };
   if (password.length < 8) return { error: "A senha precisa ter pelo menos 8 caracteres." };
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name, company, phone },
-      emailRedirectTo: `${await origin()}/auth/callback?next=/painel`,
-    },
-  });
-  if (error) return { error: translate(error.message) };
-  if (data.session) redirect("/painel");
-  return { ok: true, message: `Conta criada! Enviamos um link de confirmação para ${email}.` };
+  // The Edge Function creates the account and sends our own confirmation e-mail (Resend).
+  const { status, data } = await callPlatform<{ ok?: boolean }>({ action: "signup", email, password, full_name, company, phone });
+  if (status === 409) return { error: "Já existe uma conta com este e-mail. Entre ou use “Esqueci minha senha”." };
+  if (status === 429) return { error: "Muitas tentativas com este e-mail. Tente de novo em 1 hora." };
+  if (status !== 200) return { error: "Não foi possível criar a conta agora. Tente de novo em instantes." };
+  if (!data.ok) {
+    return { ok: true, message: "Conta criada, mas o e-mail de confirmação não saiu. Use “Esqueci minha senha” no login para receber um link de acesso." };
+  }
+  return { ok: true, message: `Conta criada! Enviamos um link de confirmação para ${email}. Confira também a caixa de spam.` };
 }
 
 export async function requestReset(_: FormState, form: FormData): Promise<FormState> {
   const email = String(form.get("email") ?? "").trim();
   if (!email.includes("@")) return { error: "Informe um e-mail válido." };
-  const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${await origin()}/auth/callback?next=/nova-senha` });
+  await callPlatform({ action: "recovery", email });
   return { ok: true, message: "Se existir uma conta com este e-mail, você vai receber um link para criar uma nova senha." };
 }
 
