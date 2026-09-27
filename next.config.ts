@@ -8,7 +8,16 @@ const nextConfig: NextConfig = {
     };
   },
   async redirects() {
-    return [{ source: "/site.html", destination: "/", permanent: true }];
+    return [
+      { source: "/site.html", destination: "/", permanent: true },
+      // One canonical address: www and the old app subdomain go to the main domain.
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "(?<sub>www|app)\\.elitesystems\\.online" }],
+        destination: "https://elitesystems.online/:path*",
+        permanent: true,
+      },
+    ];
   },
 };
 
