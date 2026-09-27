@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #05070e;
+  --color-surface: #0a1020;
+  --color-surface-2: #0f1830;
+  --color-line: #1a2440;
+  --color-line-2: #26345a;
+  --color-text: #e9eef8;
+  --color-soft: #aeb8cd;
+  --color-mute: #7f8aa6;
+  --color-blue: #2d6bff;
+  --color-blue-2: #79a2ff;
+  --color-green: #19d98b;
+  --color-red: #ff4d4d;
+  --color-amber: #f5b84b;
+
+  --font-sans: var(--font-body), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-archivo), "Arial Black", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, Consolas, monospace;
+
+  --radius-card: 18px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-blue);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-green);
+  outline-offset: 2px;
+}
+
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-stretch: 118%;
+  font-variation-settings: "wdth" 118;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* soft brand glow behind auth screens and the dashboard header */
+@utility glow-bg {
+  background:
+    radial-gradient(900px 480px at 85% -10%, rgb(45 107 255 / 0.18), transparent 60%),
+    radial-gradient(600px 400px at -10% 110%, rgb(25 217 139 / 0.08), transparent 60%),
+    var(--color-bg);
+}
+
+@utility grid-bg {
+  background-image:
+    linear-gradient(rgb(160 180 230 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(160 180 230 / 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@utility animate-rise {
+  animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
