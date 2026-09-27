@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# copies of the marketing site (lives in the elitesystems.online repo)
+/deploy/
+/elite-systems.html
