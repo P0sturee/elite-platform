@@ -100,7 +100,8 @@ html.lenis,html.lenis body{height:auto}
 .acc{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:999px;background:var(--blue);color:#fff;font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;transition:background .3s,color .3s}
 .acc:hover{background:var(--green);color:var(--ink)}
 .acc svg{width:15px;height:15px;flex:none}
-@media (max-width:640px){.acc .lbl{display:none}.acc{width:38px;padding:0;justify-content:center}}
+@media (max-width:1180px){.acc .lbl,.snd .lbl{display:none}.acc{width:38px;padding:0;justify-content:center}.nav{gap:20px}}
+@media (max-width:1023px){.nav{display:none}.menu-btn{display:grid!important}}
 .menu-btn{display:none;width:42px;height:38px;border:1px solid var(--line);border-radius:999px;place-items:center}
 .menu-btn span{display:block;width:16px;height:1.5px;background:var(--text);box-shadow:0 5px 0 var(--text),0 -5px 0 var(--text)}
 .mnav{position:fixed;inset:0;z-index:48;background:var(--ink);display:flex;flex-direction:column;justify-content:center;gap:6px;padding-inline:var(--gutter);clip-path:circle(0% at calc(100% - 40px) 36px);visibility:hidden;transition:clip-path .8s var(--ease),visibility 0s .8s}
