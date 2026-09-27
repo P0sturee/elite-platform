@@ -22,42 +22,40 @@ Resend (e-mail) · WhatsApp Cloud API (Meta) · deploy na Vercel.
 | Briefing de novo projeto | Converter pedido em projeto com um clique |
 | Avisos no sininho, e-mail e WhatsApp | Configurar Pix e ver status das integrações |
 
-## Configuração
+## Arquitetura
 
-### 1. Supabase
-1. Crie um projeto em [supabase.com](https://supabase.com) (região São Paulo).
-2. Rode os arquivos de `supabase/migrations/` em ordem (SQL Editor ou `supabase db push`).
-3. **Authentication → URL Configuration:** *Site URL* = URL da Vercel; em *Redirect URLs* adicione
-   `https://SEU-APP.vercel.app/auth/callback` e `http://localhost:3000/auth/callback`.
-4. **Authentication → SMTP:** use o Resend como SMTP (o e-mail padrão do Supabase só envia poucos e-mails por hora).
-5. O primeiro login com **elitesystems.br@gmail.com** vira administrador automaticamente
-   (lista em `public.admin_emails`).
-
-### 2. Variáveis de ambiente
-Copie `.env.example` para `.env.local` e preencha. Na Vercel, cadastre as mesmas variáveis.
-
-### 3. Deploy na Vercel
-Importe o repositório na Vercel (framework Next.js, sem configuração extra).
-
-### 4. Disparo de avisos (depois do deploy)
-No SQL Editor do Supabase, com o mesmo valor de `NOTIFY_SECRET` da Vercel:
-
-```sql
-insert into private.config (key, value) values
-  ('app_url', 'https://SEU-APP.vercel.app'),
-  ('notify_secret', 'MESMO_VALOR_DO_NOTIFY_SECRET')
-on conflict (key) do update set value = excluded.value;
+```
+Navegador ──▶ Next.js (Vercel, gru1) ──▶ Supabase (Auth, Postgres/RLS, Storage, Realtime · sa-east-1)
+                                              │ trigger em notifications (pg_net)
+                                              ▼
+                                   Edge Function "platform" ──▶ Resend (e-mail)
+                                                            └─▶ Evolution API no Railway (WhatsApp)
 ```
 
-### 5. E-mail (Resend)
-Verifique o domínio `elitesystems.online` no Resend (registros DNS) e use
-`EMAIL_FROM="Elite Systems <avisos@elitesystems.online>"`.
+- **Sem segredos na Vercel:** só a URL e a chave pública do Supabase. As chaves do Resend e da Evolution
+  ficam no **Supabase Vault** (`resend_api_key`, `email_from`, `evolution_url`, `evolution_api_key`,
+  `evolution_instance`, `notify_secret`); a Edge Function lê via `public.delivery_config()` (só service role).
+- **E-mails de conta** (confirmação e nova senha) são enviados pela Edge Function com link `token_hash`
+  direto para `/auth/callback` — não dependem do SMTP nem das URLs do painel do Supabase.
+- **WhatsApp:** conecte o número em *Configurações → Avisos* (QR Code). Instância `elite-systems`.
 
-### 6. WhatsApp (opcional)
-1. Crie um app no [Meta for Developers](https://developers.facebook.com) com o produto WhatsApp e um número.
-2. Crie e aprove o modelo **aviso_plataforma** (categoria Utilidade, português) com o corpo:
-   `Olá, {{1}}! {{2}}. Acesse: {{3}}`
-3. Preencha `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` e `WHATSAPP_TEMPLATE`.
+## Configuração
+
+1. Rode `supabase/migrations/` em ordem e publique `supabase/functions/platform` (`verify_jwt = false`).
+2. Crie os segredos do Vault e `private.config` (`app_url`, `functions_url`) — veja a migração 0004.
+3. Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_APP_URL`.
+4. O primeiro cadastro com **elitesystems.br@gmail.com** vira administrador (`public.admin_emails`).
+
+### Domínio próprio (DNS na Hostinger)
+| Tipo | Nome | Valor |
+| --- | --- | --- |
+| A | `app` | `76.76.21.21` (Vercel) |
+| TXT | `resend._domainkey` | chave DKIM mostrada no Resend |
+| MX | `send` | `feedback-smtp.sa-east-1.amazonses.com` (prioridade 10) |
+| TXT | `send` | `v=spf1 include:amazonses.com ~all` |
+
+Depois de verificar, troque `email_from` no Vault para `Elite Systems <avisos@elitesystems.online>` e
+`app_url`/`NEXT_PUBLIC_APP_URL` para `https://app.elitesystems.online`.
 
 ## Desenvolvimento
 
