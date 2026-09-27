@@ -46,16 +46,29 @@ Navegador ──▶ Next.js (Vercel, gru1) ──▶ Supabase (Auth, Postgres/RL
 3. Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_APP_URL`.
 4. O primeiro cadastro com **elitesystems.br@gmail.com** vira administrador (`public.admin_emails`).
 
-### Domínio próprio (DNS na Hostinger)
+### Site + plataforma no mesmo endereço
+- `https://elitesystems.online/` serve o site institucional (`public/site.html`, via rewrite em `next.config.ts`).
+  **Edite o site aqui** — o repositório `elitesystems.online` (GitHub Pages) ficou só como backup.
+- As demais rotas são a plataforma (`/login`, `/cadastro`, `/painel`, `/admin`…). O botão “Área do cliente”
+  do site leva a `/painel`; o briefing do site leva a `/novo-projeto?tipos=…&equipe=…&prioridade=…&contexto=…`,
+  que pede login/cadastro e chega com o formulário preenchido.
+- `www.` e `app.` redirecionam para o domínio principal.
+
+### DNS (Hostinger)
 | Tipo | Nome | Valor |
 | --- | --- | --- |
-| A | `app` | `76.76.21.21` (Vercel) |
-| TXT | `resend._domainkey` | chave DKIM mostrada no Resend |
-| MX | `send` | `feedback-smtp.sa-east-1.amazonses.com` (prioridade 10) |
+| A | `@` | `76.76.21.21` (Vercel) |
+| CNAME | `www` | `cname.vercel-dns.com` |
+| TXT | `resend._domainkey` | chave DKIM do Resend |
+| MX | `send` | `10 feedback-smtp.sa-east-1.amazonses.com` |
 | TXT | `send` | `v=spf1 include:amazonses.com ~all` |
+| CNAME | `rsend` | `send.forge.rmta.net` |
 
-Depois de verificar, troque `email_from` no Vault para `Elite Systems <avisos@elitesystems.online>` e
-`app_url`/`NEXT_PUBLIC_APP_URL` para `https://app.elitesystems.online`.
+Para voltar o site ao GitHub Pages: A `@` → `185.199.108.153`, `.109`, `.110`, `.111` e CNAME `www` → `elitesystems.online`.
+
+### Pix
+A chave fica em Configurações com o tipo (CPF, CNPJ, telefone, e-mail ou aleatória) e é salva no formato do
+Banco Central (telefone vira `+55…`). O QR segue o padrão BR Code estático com valor e descrição da parcela.
 
 ## Desenvolvimento
 
