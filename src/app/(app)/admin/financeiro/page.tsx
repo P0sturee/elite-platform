@@ -23,7 +23,7 @@ export default async function AdminFinancePage({ searchParams }: PageProps<"/adm
 
   const [{ data }, pendingAll, paidMonth] = await Promise.all([
     (() => {
-      let q = supabase.from("installments").select("*, projects(id, name, profiles(full_name, company))");
+      let q = supabase.from("installments").select("*, projects(id, name, profiles!projects_client_id_fkey(full_name, company))");
       if (view === "vencidas") q = q.eq("status", "pending").lt("due_date", today).order("due_date");
       if (view === "a-vencer") q = q.eq("status", "pending").gte("due_date", today).order("due_date");
       if (view === "pagas") q = q.eq("status", "paid").order("paid_at", { ascending: false });

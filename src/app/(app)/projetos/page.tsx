@@ -19,7 +19,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/projeto
 
   let query = supabase
     .from("projects")
-    .select("*, project_stages(status, progress, position, name), profiles(full_name, company, email)")
+    .select("*, project_stages(status, progress, position, name), profiles!projects_client_id_fkey(full_name, company, email)")
     .order("updated_at", { ascending: false });
   if (filter !== "todos") query = query.eq("status", filter);
   if (admin && typeof sp.cliente === "string") query = query.eq("client_id", sp.cliente);

@@ -15,7 +15,7 @@ export const getProject = cache(async (id: string) => {
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const { data } = await session.supabase
     .from("projects")
-    .select("*, project_stages(*), profiles(id, full_name, company, email, phone)")
+    .select("*, project_stages(*), profiles!projects_client_id_fkey(id, full_name, company, email, phone)")
     .eq("id", id)
     .maybeSingle();
   if (!data) notFound();

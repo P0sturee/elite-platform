@@ -31,7 +31,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
   const filter = (typeof sp.status === "string" ? sp.status : "todos") as AccountStatus | "todos";
   const only = typeof sp.c === "string" ? sp.c : null;
 
-  let query = supabase.from("profiles").select("*, projects(count)").eq("role", "client").order("created_at", { ascending: false });
+  let query = supabase.from("profiles").select("*, projects!projects_client_id_fkey(count)").eq("role", "client").order("created_at", { ascending: false });
   if (only) query = query.eq("id", only);
   else if (filter !== "todos") query = query.eq("status", filter);
   const { data } = await query;

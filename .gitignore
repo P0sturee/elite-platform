@@ -44,3 +44,6 @@ next-env.d.ts
 # copies of the marketing site (lives in the elitesystems.online repo)
 /deploy/
 /elite-systems.html
+
+.vercel
+.env*
