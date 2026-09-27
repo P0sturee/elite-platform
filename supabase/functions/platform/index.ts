@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 type Cfg = Partial<Record<
-  "resend_api_key" | "email_from" | "evolution_url" | "evolution_api_key" | "evolution_instance" | "notify_secret" | "app_url",
+  "resend_api_key" | "email_from" | "email_from_fallback" | "evolution_url" | "evolution_api_key" | "evolution_instance" | "notify_secret" | "app_url",
   string
 >>;
 
@@ -49,14 +49,23 @@ ${o.body ? `<p style="margin:14px 0 0;color:#AEB8CD;font-size:15px;line-height:1
 </td></tr></table></body></html>`;
 }
 
+// Tries the main sender first; while its domain is not verified in Resend (403/422) it falls back.
 async function sendEmail(cfg: Cfg, to: string, subject: string, html: string, text: string) {
   if (!cfg.resend_api_key) return "skipped: no key";
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${cfg.resend_api_key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: cfg.email_from || "Elite Systems <onboarding@resend.dev>", to: [to], subject, html, text }),
-  });
-  return res.ok ? "sent" : `error ${res.status}: ${await res.text()}`;
+  const senders = [cfg.email_from, cfg.email_from_fallback].filter((f): f is string => !!f);
+  if (!senders.length) senders.push("Elite Systems <onboarding@resend.dev>");
+  let last = "";
+  for (const from of senders) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.resend_api_key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], subject, html, text }),
+    });
+    if (res.ok) return "sent";
+    last = `error ${res.status}: ${await res.text()}`;
+    if (res.status !== 403 && res.status !== 422) break;
+  }
+  return last;
 }
 
 function waNumber(phone: string) {
