@@ -13,7 +13,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       <aside className="relative hidden overflow-hidden border-r border-line glow-bg lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div className="pointer-events-none absolute inset-0 grid-bg [mask-image:radial-gradient(ellipse_at_70%_30%,#000_20%,transparent_75%)]" />
-        <Link href="https://elitesystems.online" className="relative w-fit"><Logo /></Link>
+        <Link href="/" className="relative w-fit"><Logo /></Link>
         <div className="relative max-w-lg">
           <p className="eyebrow mb-5 flex items-center gap-2.5 text-green">
             <span className="size-2 rounded-full bg-green shadow-[0_0_12px] shadow-green" />Plataforma do cliente

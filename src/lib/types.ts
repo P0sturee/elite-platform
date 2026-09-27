@@ -110,6 +110,7 @@ export interface Installment {
 export interface Settings {
   id: number;
   pix_key: string;
+  pix_key_type: "cpf" | "cnpj" | "phone" | "email" | "evp";
   pix_name: string;
   pix_city: string;
   support_whatsapp: string;

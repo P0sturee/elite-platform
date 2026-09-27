@@ -31,7 +31,7 @@ async function config(): Promise<Cfg> {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-const appUrl = (cfg: Cfg) => (cfg.app_url || "https://elite-platform-nine.vercel.app").replace(/\/$/, "");
+const appUrl = (cfg: Cfg) => (cfg.app_url || "https://elitesystems.online").replace(/\/$/, "");
 
 function emailHtml(o: { greeting: string; title: string; body?: string; cta: string; url: string; footer: string }) {
   return `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#05070E;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#E9EEF8">
@@ -163,7 +163,8 @@ Deno.serve(async (req) => {
       const exists = /already|registered|exists/i.test(error.message) || ["email_exists", "user_already_exists"].includes(String((error as any).code));
       return json({ error: exists ? "exists" : error.message }, exists ? 409 : 400);
     }
-    const link = `${appUrl(cfg)}/auth/callback?token_hash=${data.properties.hashed_token}&type=signup&next=/painel`;
+    const nextPath = typeof body.next === "string" && body.next.startsWith("/") && !body.next.startsWith("//") ? body.next : "/painel";
+    const link = `${appUrl(cfg)}/auth/callback?token_hash=${data.properties.hashed_token}&type=signup&next=${encodeURIComponent(nextPath)}`;
     const name = String(body.full_name ?? "").split(" ")[0] || "tudo bem";
     const sent = await sendEmail(cfg, email, "Confirme seu e-mail — Elite Systems",
       emailHtml({ greeting: `Olá, ${name}`, title: "Confirme seu e-mail para acessar a plataforma",

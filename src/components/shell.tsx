@@ -74,6 +74,7 @@ export function Shell({
         <Link href={admin ? "/admin" : "/painel"} className="px-2 pt-2"><Logo /></Link>
         {admin && <p className="eyebrow -mt-3 px-2 text-green">Painel da equipe</p>}
         <nav aria-label="Principal" className="flex-1 overflow-y-auto"><NavList items={nav} /></nav>
+        <Link href="/" className="px-3 text-xs text-mute hover:text-text">← Voltar ao site</Link>
         {account}
       </aside>
 

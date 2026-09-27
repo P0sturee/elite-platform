@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { actionAdmin, fail } from "@/lib/session";
 import { parseMoney } from "@/lib/format";
+import { PIX_KEY_TYPES, normalizePixKey, type PixKeyType } from "@/lib/pix-key";
 import type { FormState, InstallmentStatus } from "@/lib/types";
 
 const str = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -67,10 +68,15 @@ export async function deleteInstallment(form: FormData) {
 export async function saveSettings(_: FormState, form: FormData): Promise<FormState> {
   try {
     const { supabase } = await actionAdmin();
+    const type = str(form, "pix_key_type") as PixKeyType;
+    if (!(type in PIX_KEY_TYPES)) return { error: "Escolha o tipo da chave Pix." };
+    const normalized = normalizePixKey(type, str(form, "pix_key"));
+    if ("error" in normalized) return { error: normalized.error };
     const { error } = await supabase
       .from("settings")
       .update({
-        pix_key: str(form, "pix_key"),
+        pix_key: normalized.key,
+        pix_key_type: type,
         pix_name: str(form, "pix_name"),
         pix_city: str(form, "pix_city"),
         support_whatsapp: str(form, "support_whatsapp").replace(/\D/g, ""),
@@ -78,7 +84,7 @@ export async function saveSettings(_: FormState, form: FormData): Promise<FormSt
       .eq("id", 1);
     if (error) throw error;
     revalidatePath("/", "layout");
-    return { ok: true, message: "Configurações salvas." };
+    return { ok: true, message: `Configurações salvas. Chave Pix: ${normalized.key}` };
   } catch (e) {
     return fail(e);
   }

@@ -27,7 +27,7 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = !!data?.claims;
   const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"));
+  const isPublic = path === "/" || PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"));
 
   const redirect = (to: string, next?: string) => {
     const url = request.nextUrl.clone();
@@ -39,12 +39,19 @@ export async function proxy(request: NextRequest) {
     return res;
   };
 
-  if (!signedIn && !isPublic) return redirect("/login", path === "/" ? undefined : path + request.nextUrl.search);
-  if (signedIn && (path === "/login" || path === "/cadastro" || path === "/")) return redirect("/painel");
+  if (!signedIn && !isPublic) return redirect("/login", path + request.nextUrl.search);
+  if (signedIn && (path === "/login" || path === "/cadastro")) {
+    // Already signed in: go straight to where they were heading (keeps the query, e.g. a briefing draft).
+    const next = request.nextUrl.searchParams.get("next");
+    const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/painel";
+    const res = NextResponse.redirect(new URL(target, request.url));
+    response.cookies.getAll().forEach((c) => res.cookies.set(c));
+    return res;
+  }
 
   return response;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\.(?:png|jpg|jpeg|svg|webp|ico)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\.(?:png|jpg|jpeg|svg|webp|ico|html)$).*)"],
 };

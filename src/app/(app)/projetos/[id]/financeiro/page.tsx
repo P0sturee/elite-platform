@@ -8,6 +8,7 @@ import { installmentStatus } from "@/lib/labels";
 import { financeSummary, installmentState } from "@/lib/project";
 import { brl, date } from "@/lib/format";
 import { pixPayload } from "@/lib/pix";
+import { guessPixKeyType, normalizePixKey } from "@/lib/pix-key";
 import type { Installment, Settings } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Financeiro" };
@@ -33,7 +34,11 @@ export default async function FinancePage({ params }: PageProps<"/projetos/[id]/
   const items = (data ?? []) as Installment[];
   const settings = settingsData as Settings | null;
   const summary = financeSummary(items);
-  const pixReady = !!settings?.pix_key;
+  const normalizedKey = settings?.pix_key
+    ? normalizePixKey(settings.pix_key_type ?? guessPixKeyType(settings.pix_key), settings.pix_key)
+    : null;
+  const pixKey = normalizedKey && "key" in normalizedKey ? normalizedKey.key : "";
+  const pixReady = !!pixKey;
 
   return (
     <div className={cx("grid gap-8", admin && "xl:grid-cols-[minmax(0,1fr)_340px]")}>
@@ -54,8 +59,8 @@ export default async function FinancePage({ params }: PageProps<"/projetos/[id]/
                 const st = installmentStatus[state];
                 const payload = pixReady && i.status === "pending"
                   ? pixPayload({
-                      key: settings!.pix_key, name: settings!.pix_name, city: settings!.pix_city,
-                      amountCents: i.amount_cents, txid: `ES${i.id.replace(/-/g, "").slice(0, 16)}`,
+                      key: pixKey, name: settings!.pix_name, city: settings!.pix_city,
+                      amountCents: i.amount_cents, description: `Parcela ${i.number}`,
                     })
                   : "";
                 const wa = settings?.support_whatsapp

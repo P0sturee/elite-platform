@@ -1,20 +1,29 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { saveSettings } from "@/app/actions/finance";
+import { PIX_KEY_TYPES, type PixKeyType } from "@/lib/pix-key";
 import type { Settings } from "@/lib/types";
-import { Field, FormMessage, Input } from "./ui";
+import { Field, FormMessage, Input, Select } from "./ui";
 import { SubmitButton } from "./ui-client";
 
 export function SettingsForm({ settings }: { settings: Settings }) {
   const [state, action] = useActionState(saveSettings, undefined);
+  const [type, setType] = useState<PixKeyType>(settings.pix_key_type ?? "phone");
   return (
     <form action={action} className="grid gap-5 p-5">
-      <Field label="Chave Pix" htmlFor="pix_key" hint="CNPJ/CPF só números, e-mail, telefone no formato +5541999999999 ou chave aleatória.">
-        <Input id="pix_key" name="pix_key" defaultValue={settings.pix_key} placeholder="+5541995758534" />
-      </Field>
+      <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)]">
+        <Field label="Tipo de chave" htmlFor="pix_key_type">
+          <Select id="pix_key_type" name="pix_key_type" value={type} onChange={(e) => setType(e.target.value as PixKeyType)}>
+            {Object.entries(PIX_KEY_TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+          </Select>
+        </Field>
+        <Field label="Chave Pix" htmlFor="pix_key" hint={settings.pix_key ? <>Salva como <span className="font-mono text-soft">{settings.pix_key}</span></> : "Digite como preferir — ajustamos para o formato do Banco Central."}>
+          <Input id="pix_key" name="pix_key" defaultValue={settings.pix_key} placeholder={PIX_KEY_TYPES[type].placeholder} required />
+        </Field>
+      </div>
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Nome do recebedor" htmlFor="pix_name" hint="Até 25 letras, sem acento.">
+        <Field label="Nome do recebedor" htmlFor="pix_name" hint="Como aparece no app do banco. Até 25 letras.">
           <Input id="pix_name" name="pix_name" defaultValue={settings.pix_name} maxLength={25} />
         </Field>
         <Field label="Cidade" htmlFor="pix_city" hint="Até 15 letras.">

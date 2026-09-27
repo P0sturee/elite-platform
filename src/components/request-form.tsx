@@ -6,14 +6,14 @@ import { BUDGETS, DEADLINES, PRIORITIES, SYSTEM_TYPES, TEAM_SIZES } from "@/lib/
 import { ButtonLink, Field, FormMessage, Textarea } from "./ui";
 import { SubmitButton } from "./ui-client";
 
-function Chips({ name, options, type, legend, defaultValue }: { name: string; options: string[]; type: "checkbox" | "radio"; legend: string; defaultValue?: string }) {
+function Chips({ name, options, type, legend, defaults = [] }: { name: string; options: string[]; type: "checkbox" | "radio"; legend: string; defaults?: string[] }) {
   return (
     <fieldset>
       <legend className="eyebrow mb-3 text-mute">{legend}</legend>
       <div className="flex flex-wrap gap-2">
         {options.map((o) => (
           <label key={o} className="cursor-pointer">
-            <input type={type} name={name} value={o} defaultChecked={o === defaultValue} className="peer sr-only" />
+            <input type={type} name={name} value={o} defaultChecked={defaults.includes(o)} className="peer sr-only" />
             <span className="inline-flex h-10 items-center gap-2 rounded-full border border-line-2 px-4 text-sm text-soft transition-colors hover:border-blue-2 peer-checked:border-blue peer-checked:bg-blue peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-green">
               {o}
             </span>
@@ -24,7 +24,9 @@ function Chips({ name, options, type, legend, defaultValue }: { name: string; op
   );
 }
 
-export function RequestForm() {
+export type RequestDefaults = { types?: string[]; team?: string; priority?: string; context?: string };
+
+export function RequestForm({ defaults = {} }: { defaults?: RequestDefaults }) {
   const [state, action] = useActionState(createRequest, undefined);
   if (state?.ok) {
     return (
@@ -38,15 +40,15 @@ export function RequestForm() {
   }
   return (
     <form action={action} className="grid gap-8">
-      <Chips legend="Que tipo de sistema?" name="types" type="checkbox" options={SYSTEM_TYPES} />
-      <Chips legend="Tamanho da equipe" name="team_size" type="radio" options={TEAM_SIZES} />
-      <Chips legend="Maior prioridade" name="priority" type="radio" options={PRIORITIES} />
+      <Chips legend="Que tipo de sistema?" name="types" type="checkbox" options={SYSTEM_TYPES} defaults={defaults.types} />
+      <Chips legend="Tamanho da equipe" name="team_size" type="radio" options={TEAM_SIZES} defaults={defaults.team ? [defaults.team] : []} />
+      <Chips legend="Maior prioridade" name="priority" type="radio" options={PRIORITIES} defaults={defaults.priority ? [defaults.priority] : []} />
       <div className="grid gap-8 lg:grid-cols-2">
         <Chips legend="Investimento previsto" name="budget" type="radio" options={BUDGETS} />
         <Chips legend="Prazo desejado" name="deadline" type="radio" options={DEADLINES} />
       </div>
       <Field label="O que mais trava sua operação hoje?" htmlFor="context" hint="Ex.: fazemos orçamentos no Excel e perdemos o controle das aprovações.">
-        <Textarea id="context" name="context" className="min-h-36" required />
+        <Textarea id="context" name="context" className="min-h-36" defaultValue={defaults.context} required />
       </Field>
       <FormMessage state={state} />
       <div><SubmitButton pendingText="Enviando…">Enviar pedido</SubmitButton></div>

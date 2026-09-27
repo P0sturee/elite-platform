@@ -23,11 +23,12 @@ export function LoginForm({ next }: { next?: string }) {
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ next }: { next?: string }) {
   const [state, action] = useActionState(signUp, undefined);
   if (state?.ok) return <FormMessage state={state} />;
   return (
     <form action={action} className="grid gap-4">
+      <input type="hidden" name="next" value={next ?? ""} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Seu nome" htmlFor="full_name">
           <Input id="full_name" name="full_name" autoComplete="name" required />

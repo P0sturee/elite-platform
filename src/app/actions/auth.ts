@@ -45,7 +45,8 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   if (password.length < 8) return { error: "A senha precisa ter pelo menos 8 caracteres." };
 
   // The Edge Function creates the account and sends our own confirmation e-mail (Resend).
-  const { status, data } = await callPlatform<{ ok?: boolean }>({ action: "signup", email, password, full_name, company, phone });
+  const next = safeNext(form.get("next"));
+  const { status, data } = await callPlatform<{ ok?: boolean }>({ action: "signup", email, password, full_name, company, phone, next });
   if (status === 409) return { error: "Já existe uma conta com este e-mail. Entre ou use “Esqueci minha senha”." };
   if (status === 429) return { error: "Muitas tentativas com este e-mail. Tente de novo em 1 hora." };
   if (status !== 200) return { error: "Não foi possível criar a conta agora. Tente de novo em instantes." };
