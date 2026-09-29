@@ -2,6 +2,7 @@
 // action=tick                  (pg_cron a cada minuto, x-notify-secret) → responde leads, manda a 1ª mensagem, busca empresas
 // ?hook=<wa_webhook_secret>    (webhook da Evolution API, MESSAGES_UPSERT) → registra respostas e agenda a resposta da IA
 // action=setup|search|send     (JWT de admin) → liga o webhook, busca agora, responde manualmente pelo painel
+// action=search|ai_test         (x-notify-secret) → testes internos: busca empresas / testa a IA sem enviar nada
 // IA: Gemini (Google AI Studio, cota grátis) se houver chave; senão Claude (Anthropic).
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk";
@@ -14,7 +15,7 @@ type Cfg = Partial<Record<
 type Settings = {
   enabled: boolean; daily_max: number; window_start: number; window_end: number; weekdays_only: boolean;
   warmup_started: string | null; next_send_at: string | null; send_errors: number;
-  sender_name: string; openers: string[]; pitch: string;
+  sender_name: string; openers: string[]; pitch: string; lead_source: string;
 };
 type Lead = {
   id: string; name: string; phone: string; wa_jid: string; category: string; address: string; status: string;
@@ -25,6 +26,10 @@ type Msg = { author: "lead" | "bot" | "admin"; body: string; created_at: string 
 const MODEL = "claude-opus-5-5";
 // Gemini (Google AI Studio, free tier): first model that exists for the key wins.
 const GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+const GEMINI_HOSTS = {
+  studio: (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,
+  vertex: (m: string) => `https://aiplatform.googleapis.com/v1/publishers/google/models/${m}:generateContent`,
+};
 const TZ_OFFSET = "-03:00"; // Brasília (sem horário de verão)
 const MAX_BOT_TURNS = 4;
 const REPLY_HOURS = [8, 21]; // a IA só responde nesse intervalo (hora local)
@@ -80,17 +85,29 @@ function dailyLimit(s: Settings, today: string) {
 }
 
 // ---------------------------------------------------------------- phones
-/** Brazilian mobile as 55 + DDD + 9 digits, or "" (landlines rarely have WhatsApp). */
-function mobile(raw: string) {
+/**
+ * Brazilian number as 55 + DDD + number: mobiles (9 + 8 digits) and landlines (8 digits — many businesses use
+ * WhatsApp Business on them; every number is checked on WhatsApp before the first message). "" when invalid.
+ */
+function brPhone(raw: string) {
   let d = raw.replace(/\D/g, "");
   if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  if (d.startsWith("0") && d.length >= 11) d = d.replace(/^0(\d\d)?(?=\d{10,11}$)/, ""); // 0 + operadora
   if (d.length === 10 && /[6-9]/.test(d[2]!)) d = d.slice(0, 2) + "9" + d.slice(2); // old 8-digit mobile
-  return d.length === 11 && d[2] === "9" ? `55${d}` : "";
+  if (d.length === 11 && d[2] === "9") return `55${d}`;
+  if (d.length === 10 && /[2-5]/.test(d[2]!)) return `55${d}`;
+  return "";
+}
+const isMobile = (p: string) => p.length === 13;
+/** Best number from several fields ("41 99999-0000; 41 3333-0000"), preferring mobiles. */
+function bestPhone(...fields: unknown[]) {
+  const all = fields.flatMap((f) => String(f ?? "").split(/[;,/|]/)).map(brPhone).filter(Boolean);
+  return all.find(isMobile) ?? all[0] ?? "";
 }
 /** Phone digits from a WhatsApp JID ("5541999999999@s.whatsapp.net"), with the 9th digit restored. */
 function jidPhone(jid: unknown) {
   const s = String(jid ?? "");
-  return s.endsWith("@s.whatsapp.net") ? mobile(s.split("@")[0]!) : "";
+  return s.endsWith("@s.whatsapp.net") ? brPhone(s.split("@")[0]!) : "";
 }
 
 // ---------------------------------------------------------------- Evolution API (WhatsApp)
@@ -146,14 +163,123 @@ async function senderName(s: Settings) {
   return String(data?.full_name ?? "").split(" ")[0] || "Pedro";
 }
 
-// ---------------------------------------------------------------- Google Places (API oficial do Google Maps)
+// ---------------------------------------------------------------- lead sources
+type Search = { id: string; query: string; page_token: string | null; found: number; pages: number };
+type Found = {
+  place_id: string; name: string; phone: string; category: string; address: string; website: string; maps_url: string;
+  rating?: number | null; reviews?: number | null;
+};
+
+/** "eletricista em Curitiba" → { segment: "eletricista", city: "Curitiba" } */
+function splitQuery(query: string) {
+  const i = query.toLowerCase().lastIndexOf(" em ");
+  if (i < 0) throw new Error('Use o formato "segmento em cidade" (ex.: eletricista em Curitiba).');
+  return { segment: query.slice(0, i).trim(), city: query.slice(i + 4).trim() };
+}
+const plain = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// OpenStreetMap tags for common segments (matched against the segment without accents).
+const OSM_SEGMENTS: [RegExp, Record<string, RegExp>][] = [
+  [/assist|celular|smartphone|conserto|eletronic/, { shop: /^(mobile_phone|electronics_repair|computer|electronics)$/, craft: /^electronics_repair$/ }],
+  [/informatic|computador|notebook/, { shop: /^computer$/, craft: /^electronics_repair$/ }],
+  [/eletricist|eletrica/, { craft: /^electrician$/, shop: /^electrical$/ }],
+  [/encanador|hidraulic/, { craft: /^plumber$/ }],
+  [/mecanic|oficina|funilar|auto ?center|autopec|pneu/, { shop: /^(car_repair|tyres|car_parts)$/ }],
+  [/marcenar|marceneir|moveis/, { craft: /^(carpenter|joiner|cabinet_maker)$/, shop: /^furniture$/ }],
+  [/serralher/, { craft: /^(metal_construction|blacksmith)$/ }],
+  [/vidracar|vidro/, { craft: /^glaziery$/, shop: /^glaziery$/ }],
+  [/salao|cabelei|barbear/, { shop: /^(hairdresser|beauty)$/ }],
+  [/estetic|manicure|unha/, { shop: /^(beauty|cosmetics)$/ }],
+  [/pet|banho e tosa/, { shop: /^(pet|pet_grooming)$/ }],
+  [/veterinar/, { amenity: /^veterinary$/ }],
+  [/restaurante/, { amenity: /^restaurant$/ }],
+  [/lanchonete|hamburg|pizzar/, { amenity: /^(fast_food|restaurant)$/ }],
+  [/padaria|confeitar/, { shop: /^(bakery|confectionery|pastry)$/ }],
+  [/grafica|impressao/, { shop: /^(copyshop|printing)$/, craft: /^printer$/ }],
+  [/construcao|ferragem|ferrament/, { shop: /^(hardware|doityourself|building_materials|trade)$/ }],
+  [/ar condicionado|refrigeracao|climatiza/, { craft: /^hvac$/, shop: /^hvac$/ }],
+  [/chaveiro/, { shop: /^locksmith$/, craft: /^(locksmith|key_cutter)$/ }],
+  [/otica/, { shop: /^optician$/ }],
+  [/academia/, { leisure: /^fitness_centre$/ }],
+  [/dentist|odonto/, { amenity: /^dentist$/, healthcare: /^dentist$/ }],
+  [/clinica/, { amenity: /^clinic$/, healthcare: /^clinic$/ }],
+  [/contab|contador/, { office: /^accountant$/ }],
+  [/advoca|advogad/, { office: /^lawyer$/ }],
+  [/imobiliar/, { office: /^estate_agent$/ }],
+  [/lava ?jato|lava rapido|lavagem/, { amenity: /^car_wash$/ }],
+  [/pintor|pintura/, { craft: /^painter$/ }],
+  [/jardin|paisagis/, { craft: /^gardener$/ }],
+  [/gesso|drywall/, { craft: /^plasterer$/ }],
+  [/costur|confecc|alfaiat/, { craft: /^tailor$/, shop: /^tailor$/ }],
+  [/sapatar|calcad/, { shop: /^shoes$/, craft: /^shoemaker$/ }],
+  [/mercado|mercearia|hortifruti/, { shop: /^(supermarket|convenience|greengrocer)$/ }],
+  [/roupa|moda|boutique/, { shop: /^(clothes|boutique)$/ }],
+];
+const ALL_SEGMENTS = /^(todas?|todos|tudo|empresas?|todas as empresas|comercios?)$/;
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
+
+/**
+ * OpenStreetMap: one light query for every named place with a phone in the city (a few hundred to a few thousand),
+ * then the segment is matched here — by map category or by name, ignoring accents. Regex name searches on the
+ * Overpass servers are too slow.
+ */
+async function searchOsm(query: string): Promise<{ found: Found[]; next: string | null }> {
+  const { segment, city } = splitQuery(query);
+  const seg = plain(segment);
+  const all = ALL_SEGMENTS.test(seg);
+  const tagRules = OSM_SEGMENTS.filter(([re]) => re.test(seg)).map(([, rules]) => rules);
+  const words = seg.split(/\s+/).filter((w) => w.length >= 4);
+  const q = `[out:json][timeout:60];area["name"="${city.replace(/"/g, "")}"]["boundary"="administrative"]["admin_level"="8"]->.a;` +
+    `nwr(area.a)[~"^(phone|contact:phone|mobile|contact:mobile|contact:whatsapp)$"~"."]["name"];out center tags;`;
+  let body: any = null;
+  let lastErr = "";
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "EliteSystems-Prospect/1.0 (elitesystems.online)" },
+        body: new URLSearchParams({ data: q }),
+        signal: AbortSignal.timeout(40_000),
+      });
+      if (res.ok) { body = await res.json(); break; }
+      lastErr = `OpenStreetMap ${res.status}`;
+    } catch (e) {
+      lastErr = `OpenStreetMap: ${e instanceof Error ? e.name : "erro"}`;
+    }
+  }
+  if (!body) throw new Error(`${lastErr || "OpenStreetMap indisponível"} — tente de novo em alguns minutos.`);
+  const found: Found[] = [];
+  for (const e of (body.elements ?? []) as any[]) {
+    const t = e.tags ?? {};
+    const name = plain(String(t.name ?? ""));
+    const byTag = tagRules.some((rules) => Object.entries(rules).some(([k, re]) => re.test(String(t[k] ?? ""))));
+    const byName = words.length > 0 && words.every((w) => name.includes(w));
+    if (!all && !byTag && !byName) continue;
+    const phone = bestPhone(t["contact:whatsapp"], t["contact:mobile"], t.mobile, t.phone, t["contact:phone"]);
+    if (!phone) continue;
+    const kind = t.shop ?? t.craft ?? t.amenity ?? t.office ?? t.healthcare ?? t.leisure ?? "";
+    found.push({
+      place_id: `osm:${e.type}/${e.id}`, name: String(t.name).slice(0, 160), phone,
+      category: all ? String(kind).replaceAll("_", " ") : segment.charAt(0).toUpperCase() + segment.slice(1),
+      address: [[t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(", "), t["addr:suburb"], t["addr:city"] ?? city].filter(Boolean).join(" · "),
+      website: String(t.website ?? t["contact:website"] ?? ""), maps_url: `https://www.openstreetmap.org/${e.type}/${e.id}`,
+    });
+  }
+  return { found, next: null }; // Overpass returns everything at once
+}
+
+// Google Places (API oficial do Google Maps — precisa de faturamento ativo no Google Cloud)
 const PLACE_FIELDS = [
   "places.id", "places.displayName", "places.formattedAddress", "places.nationalPhoneNumber", "places.internationalPhoneNumber",
   "places.websiteUri", "places.googleMapsUri", "places.rating", "places.userRatingCount", "places.primaryTypeDisplayName",
   "places.businessStatus", "nextPageToken",
 ].join(",");
 
-async function runSearch(cfg: Cfg, search: { id: string; query: string; page_token: string | null; found: number; pages: number }) {
+async function searchGoogle(cfg: Cfg, search: Search): Promise<{ found: Found[]; next: string | null }> {
   if (!cfg.google_places_key) throw new Error("Cadastre a chave do Google Places em Prospecção → Ajustes.");
   const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
@@ -161,44 +287,53 @@ async function runSearch(cfg: Cfg, search: { id: string; query: string; page_tok
     body: JSON.stringify({ textQuery: search.query, languageCode: "pt-BR", regionCode: "BR", pageSize: 20, ...(search.page_token ? { pageToken: search.page_token } : {}) }),
   });
   const body = await res.json().catch(() => ({})) as any;
-  if (!res.ok) {
-    const msg = String(body?.error?.message ?? `Google ${res.status}`).slice(0, 300);
-    await db.from("prospect_searches").update({ last_error: msg, last_run_at: new Date().toISOString() }).eq("id", search.id);
-    throw new Error(msg);
-  }
-
-  // never prospect the platform's own clients
-  const { data: clients } = await db.from("profiles").select("phone");
-  const known = new Set((clients ?? []).map((c) => mobile(String(c.phone ?? ""))).filter(Boolean));
-
-  let inserted = 0;
-  for (const p of (body.places ?? []) as any[]) {
-    if (p.businessStatus && p.businessStatus !== "OPERATIONAL") continue;
-    const phone = mobile(String(p.internationalPhoneNumber || p.nationalPhoneNumber || ""));
-    if (!phone || known.has(phone)) continue;
-    const { error } = await db.from("prospect_leads").insert({
-      search_id: search.id, place_id: String(p.id), name: String(p.displayName?.text ?? "Empresa").slice(0, 160), phone,
+  if (!res.ok) throw new Error(String(body?.error?.message ?? `Google ${res.status}`).slice(0, 300));
+  const found = ((body.places ?? []) as any[])
+    .filter((p) => !p.businessStatus || p.businessStatus === "OPERATIONAL")
+    .map((p) => ({
+      place_id: String(p.id), name: String(p.displayName?.text ?? "Empresa").slice(0, 160),
+      phone: bestPhone(p.internationalPhoneNumber, p.nationalPhoneNumber),
       category: String(p.primaryTypeDisplayName?.text ?? ""), address: String(p.formattedAddress ?? ""),
       website: String(p.websiteUri ?? ""), maps_url: String(p.googleMapsUri ?? ""),
       rating: typeof p.rating === "number" ? p.rating : null, reviews: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
-    });
-    if (!error) inserted++;
-  }
-  const next = body.nextPageToken ? String(body.nextPageToken) : null;
-  await db.from("prospect_searches").update({
-    page_token: next, exhausted: !next, pages: search.pages + 1, found: search.found + inserted, last_error: "", last_run_at: new Date().toISOString(),
-  }).eq("id", search.id);
-  return { inserted, exhausted: !next };
+    }))
+    .filter((p) => p.phone);
+  return { found, next: body.nextPageToken ? String(body.nextPageToken) : null };
 }
 
-/** Keeps a small queue of companies to contact; one Google request per tick at most. */
-async function discover(cfg: Cfg) {
-  if (!cfg.google_places_key) return;
+async function runSearch(cfg: Cfg, source: string, search: Search) {
+  let result: { found: Found[]; next: string | null };
+  try {
+    result = source === "google" ? await searchGoogle(cfg, search) : await searchOsm(search.query);
+  } catch (e) {
+    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+    await db.from("prospect_searches").update({ last_error: msg, last_run_at: new Date().toISOString() }).eq("id", search.id);
+    throw new Error(msg);
+  }
+  // never prospect the platform's own clients
+  const { data: clients } = await db.from("profiles").select("phone");
+  const known = new Set((clients ?? []).map((c) => brPhone(String(c.phone ?? ""))).filter(Boolean));
+  let inserted = 0;
+  for (const f of result.found) {
+    if (known.has(f.phone)) continue;
+    const { error } = await db.from("prospect_leads").insert({ search_id: search.id, ...f });
+    if (!error) inserted++; // duplicates (same place or same phone) are skipped by unique indexes
+  }
+  await db.from("prospect_searches").update({
+    page_token: result.next, exhausted: !result.next, pages: search.pages + 1, found: search.found + inserted, last_error: "",
+    last_run_at: new Date().toISOString(),
+  }).eq("id", search.id);
+  return { inserted, exhausted: !result.next };
+}
+
+/** Keeps a small queue of companies to contact; one search request per tick at most. */
+async function discover(cfg: Cfg, s: Settings) {
+  if (s.lead_source === "google" && !cfg.google_places_key) return;
   const { count } = await db.from("prospect_leads").select("id", { count: "exact", head: true }).eq("status", "new");
   if ((count ?? 0) >= 20) return;
   const { data: search } = await db.from("prospect_searches").select("id, query, page_token, found, pages")
-    .eq("active", true).eq("exhausted", false).order("last_run_at", { ascending: true, nullsFirst: true }).limit(1).maybeSingle();
-  if (search) await runSearch(cfg, search).catch((e) => console.error("search", e.message));
+    .eq("active", true).eq("exhausted", false).order("last_run_at", { ascending: true, nullsFirst: true }).limit(1).maybeSingle<Search>();
+  if (search) await runSearch(cfg, s.lead_source, search).catch((e) => console.error("search", e.message));
 }
 
 // ---------------------------------------------------------------- first contact
@@ -316,8 +451,11 @@ function parseDecision(text: string): Decision {
 
 /** Gemini (Google AI Studio) with a JSON response schema. */
 async function decideGemini(key: string, system: string, prompt: string): Promise<Decision | null> {
-  for (const model of GEMINI_MODELS) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  // "AQ." keys are Google Cloud (Vertex AI express) keys; "AIza" keys come from Google AI Studio. Try the likely host first.
+  const hosts = key.startsWith("AQ.") ? [GEMINI_HOSTS.vertex, GEMINI_HOSTS.studio] : [GEMINI_HOSTS.studio, GEMINI_HOSTS.vertex];
+  let lastErr = "";
+  for (const host of hosts) for (const model of GEMINI_MODELS) {
+    const res = await fetch(host(model), {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
@@ -340,16 +478,19 @@ async function decideGemini(key: string, system: string, prompt: string): Promis
         },
       }),
     });
-    if (res.status === 404) continue; // model not available for this key: try the next one
     if (res.status === 429) throw new RateLimited("Gemini: limite gratuito atingido");
     const body = await res.json().catch(() => ({})) as any;
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${String(body?.error?.message ?? "").slice(0, 200)}`);
+    if (!res.ok) {
+      lastErr = `Gemini ${res.status}: ${String(body?.error?.message ?? "").slice(0, 200)}`;
+      if ([400, 401, 403, 404].includes(res.status)) continue; // model missing here or key meant for the other host
+      throw new Error(lastErr);
+    }
     const cand = body.candidates?.[0];
     if (!cand || cand.finishReason === "SAFETY") return { intent: "human_needed", reply: "", summary: "A IA não quis responder esta conversa." };
     const text = ((cand.content?.parts ?? []) as any[]).filter((p) => !p.thought).map((p) => p.text ?? "").join("");
     return text ? parseDecision(text) : null;
   }
-  throw new Error("Nenhum modelo Gemini disponível para esta chave.");
+  throw new Error(lastErr || "Nenhum modelo Gemini disponível para esta chave.");
 }
 
 async function decide(cfg: Cfg, s: Settings, lead: Lead, msgs: Msg[], name: string): Promise<Decision | null> {
@@ -553,7 +694,7 @@ Deno.serve(async (req) => {
       }
       await answerDue(cfg, s);
       await sendNext(cfg, s);
-      await discover(cfg);
+      await discover(cfg, s);
       return json({ ok: true });
     } catch (e) {
       console.error("tick", e instanceof Error ? e.message : e);
@@ -563,7 +704,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  const me = await requireAdmin(req);
+  const internal = !!cfg.notify_secret && req.headers.get("x-notify-secret") === cfg.notify_secret;
+  const me = internal ? { id: "system", role: "admin" } : await requireAdmin(req);
   if (!me) return json({ error: "forbidden" }, 403);
   try {
     if (action === "setup") {
@@ -572,9 +714,22 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
     if (action === "search") {
-      const { data: search } = await db.from("prospect_searches").select("id, query, page_token, found, pages").eq("id", body.id).single();
+      const [{ data: search }, { data: st }] = await Promise.all([
+        db.from("prospect_searches").select("id, query, page_token, found, pages").eq("id", body.id).single<Search>(),
+        db.from("prospect_settings").select("lead_source").eq("id", 1).single(),
+      ]);
       if (!search) return json({ error: "Busca não encontrada." }, 404);
-      return json(await runSearch(cfg, search));
+      return json(await runSearch(cfg, String(st?.lead_source ?? "osm"), search));
+    }
+    if (action === "ai_test") {
+      const { data: st } = await db.from("prospect_settings").select("*").eq("id", 1).single<Settings>();
+      const lead = { id: "", name: "Assistência Teste", phone: "", wa_jid: "", category: "Assistência técnica", address: "Curitiba", status: "replied", bot_paused: false, bot_turns: 0, reply_due_at: null } as Lead;
+      const name = await senderName(st!);
+      const msgs: Msg[] = [
+        { author: "bot", body: opener(st!, lead, name), created_at: "" },
+        { author: "lead", body: String(body.text ?? "Opa, tenho interesse sim. Como funciona?"), created_at: "" },
+      ];
+      return json({ provider: cfg.gemini_api_key ? "gemini" : cfg.anthropic_api_key ? "anthropic" : "none", decision: await decide(cfg, st!, lead, msgs, name) });
     }
     if (action === "send") {
       const text = String(body.text ?? "").trim();

@@ -22,8 +22,12 @@ export async function toggleProspecting(_: FormState, form: FormData): Promise<F
     const { supabase } = await actionAdmin();
     const enable = str(form, "enabled") === "1";
     if (enable) {
-      const { data: keys } = await supabase.rpc("prospect_integrations");
-      if (!keys?.google || !(keys?.gemini || keys?.anthropic)) return { error: "Cadastre as chaves do Google Places e do Gemini em Ajustes antes de ligar." };
+      const [{ data: keys }, { data: st }] = await Promise.all([
+        supabase.rpc("prospect_integrations"),
+        supabase.from("prospect_settings").select("lead_source").eq("id", 1).single(),
+      ]);
+      if (!(keys?.gemini || keys?.anthropic)) return { error: "Cadastre a chave do Gemini em Ajustes antes de ligar." };
+      if (st?.lead_source === "google" && !keys?.google) return { error: "Para buscar no Google Maps, cadastre a chave do Google Places (ou troque a fonte para OpenStreetMap)." };
       const { count } = await supabase.from("prospect_searches").select("id", { count: "exact", head: true }).eq("active", true);
       if (!count) return { error: "Adicione pelo menos uma busca (segmento + cidade) antes de ligar." };
       await call({ action: "setup" });
@@ -54,7 +58,7 @@ export async function saveProspectSettings(_: FormState, form: FormData): Promis
     if (pitch.length < 40) return { error: "Descreva o OrçaPro para a IA (pelo menos algumas linhas)." };
     const { error } = await supabase.from("prospect_settings").update({
       daily_max, window_start, window_end, weekdays_only: form.get("weekdays_only") === "on",
-      sender_name: str(form, "sender_name"), openers, pitch,
+      sender_name: str(form, "sender_name"), openers, pitch, lead_source: str(form, "lead_source") === "google" ? "google" : "osm",
     }).eq("id", 1);
     if (error) throw error;
     revalidatePath(PATH);
@@ -117,7 +121,7 @@ export async function runSearchNow(_: FormState, form: FormData): Promise<FormSt
   try {
     const r = await call<{ inserted: number; exhausted: boolean }>({ action: "search", id: str(form, "id") });
     revalidatePath(PATH);
-    return { ok: true, message: `${r.inserted} empresa(s) com celular entraram na fila${r.exhausted ? " — busca concluída" : ""}.` };
+    return { ok: true, message: `${r.inserted} empresa(s) com telefone entraram na fila${r.exhausted ? " — busca concluída" : ""}.` };
   } catch (e) {
     return fail(e);
   }

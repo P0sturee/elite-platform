@@ -224,4 +224,5 @@ export interface ProspectSettings {
   sender_name: string;
   openers: string[];
   pitch: string;
+  lead_source: "osm" | "google";
 }

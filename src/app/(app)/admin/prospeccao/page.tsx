@@ -55,7 +55,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
   const waOpen = wa.whatsapp?.state === "open";
   const problems = [
     !waOpen && "O WhatsApp da Elite não está conectado (Configurações → Avisos).",
-    !keys?.google && "Falta a chave do Google Places (Ajustes).",
+    settings.lead_source === "google" && !keys?.google && "Falta a chave do Google Places (Ajustes) — ou use o OpenStreetMap.",
     !keys?.gemini && !keys?.anthropic && "Falta a chave do Gemini para a IA responder (Ajustes).",
   ].filter(Boolean) as string[];
 
@@ -93,7 +93,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
 
       <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Enviadas hoje" value={`${sentToday.count ?? 0}/${limit}`} hint={settings.warmup_started ? (day <= 6 ? `1ª semana: dia ${day}` : "Ritmo cheio") : "Começa no 1º envio"} />
-        <Stat label="Na fila" value={queued.count ?? 0} hint="Empresas com celular" />
+        <Stat label="Na fila" value={queued.count ?? 0} hint="Conferidas no WhatsApp antes do envio" />
         <Stat label="Responderam" value={replied.count ?? 0} />
         <Stat label="Querem apresentação" value={interested.count ?? 0} tone="green" hint={interested.count ? "Esperando você" : undefined} />
         <Stat label="Reuniões marcadas" value={meetings.count ?? 0} />
@@ -171,11 +171,11 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
       {tab === "buscas" && (
         <div className="grid gap-6">
           <Card>
-            <CardHeader eyebrow="Google Maps" title="Novas buscas" />
+            <CardHeader eyebrow={settings.lead_source === "google" ? "Google Maps" : "OpenStreetMap"} title="Novas buscas" />
             <SearchAddForm />
           </Card>
           <Card>
-            <CardHeader title="Buscas" eyebrow="O robô percorre uma por vez, até 60 empresas cada" />
+            <CardHeader title="Buscas" eyebrow="O robô percorre uma por vez e só guarda empresas com telefone" />
             {(searches ?? []).length === 0 ? (
               <EmptyState icon={<MapPin className="size-5" />} title="Nenhuma busca ainda">Ex.: “eletricista” + “Curitiba”.</EmptyState>
             ) : (
@@ -185,7 +185,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{q.query}</p>
                       <p className="text-xs text-mute">
-                        {q.found} com celular na fila · {q.last_run_at ? `última busca ${dateTime(q.last_run_at)}` : "ainda não buscada"}
+                        {q.found} com telefone na fila · {q.last_run_at ? `última busca ${dateTime(q.last_run_at)}` : "ainda não buscada"}
                       </p>
                       {q.last_error && <p className="text-xs text-red">{q.last_error}</p>}
                     </div>
@@ -216,8 +216,8 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
             <Card>
               <CardHeader eyebrow="Guardadas no cofre (Vault)" title="Chaves" />
               <div className="grid gap-6 p-5">
-                <ProspectKeyForm name="google_places_key" label="Google Places" configured={!!keys?.google}
-                  hint={<>Google Cloud → APIs → ative <b>Places API (New)</b> → Credenciais → Criar chave. Restrinja a chave a essa API.</>} />
+                <ProspectKeyForm name="google_places_key" label="Google Places (opcional)" configured={!!keys?.google}
+                  hint={<>Só para buscar no Google Maps: ative a <b>Places API (New)</b> e o faturamento no Google Cloud.</>} />
                 <ProspectKeyForm name="gemini_api_key" label="Gemini (IA grátis)" configured={!!keys?.gemini}
                   hint={<>aistudio.google.com/apikey → Create API key. Cota gratuita, sem cartão. É a IA que entende e responde as empresas.</>} />
                 <ProspectKeyForm name="anthropic_api_key" label="Anthropic (opcional, pago)" configured={!!keys?.anthropic}
@@ -230,7 +230,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
                 {[
                   `Número já aquecido: 25 por dia nos 2 primeiros dias de prospecção, 35 até o 6º e depois o seu limite (${settings.daily_max}).`,
                   "Envios espalhados pelo horário comercial, com intervalo aleatório e “digitando…”.",
-                  "Só celulares, conferidos no WhatsApp antes do envio; nunca clientes da plataforma.",
+                  "Todo número é conferido no WhatsApp antes do envio; nunca clientes da plataforma.",
                   "Uma única mensagem por empresa, sem insistir; quem responde SAIR não recebe mais nada.",
                   "Pausa sozinho se o WhatsApp cair ou se 3 envios seguidos falharem.",
                   "Se você responder a conversa pelo celular, o robô para de responder aquele lead.",

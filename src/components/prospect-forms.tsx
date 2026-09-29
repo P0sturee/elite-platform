@@ -44,6 +44,13 @@ export function ProspectSettingsForm({ settings }: { settings: ProspectSettings 
           </Select>
         </Field>
       </div>
+      <Field label="Onde buscar as empresas" htmlFor="lead_source"
+        hint="OpenStreetMap é grátis e sem chave, mas tem menos empresas com telefone. Google Maps tem muito mais, mas exige faturamento ativo no Google Cloud.">
+        <Select id="lead_source" name="lead_source" defaultValue={settings.lead_source}>
+          <option value="osm">OpenStreetMap (grátis)</option>
+          <option value="google">Google Maps (chave do Google Places)</option>
+        </Select>
+      </Field>
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Seu nome nas mensagens" htmlFor="sender_name" hint="Vazio = primeiro nome da sua conta.">
           <Input id="sender_name" name="sender_name" defaultValue={settings.sender_name} maxLength={40} />
