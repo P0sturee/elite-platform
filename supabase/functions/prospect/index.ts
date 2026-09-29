@@ -2,11 +2,12 @@
 // action=tick                  (pg_cron a cada minuto, x-notify-secret) → responde leads, manda a 1ª mensagem, busca empresas
 // ?hook=<wa_webhook_secret>    (webhook da Evolution API, MESSAGES_UPSERT) → registra respostas e agenda a resposta da IA
 // action=setup|search|send     (JWT de admin) → liga o webhook, busca agora, responde manualmente pelo painel
+// IA: Gemini (Google AI Studio, cota grátis) se houver chave; senão Claude (Anthropic).
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk";
 
 type Cfg = Partial<Record<
-  "google_places_key" | "anthropic_api_key" | "evolution_url" | "evolution_api_key" | "evolution_instance" |
+  "google_places_key" | "gemini_api_key" | "anthropic_api_key" | "evolution_url" | "evolution_api_key" | "evolution_instance" |
   "notify_secret" | "wa_webhook_secret" | "app_url" | "functions_url",
   string
 >>;
@@ -22,6 +23,8 @@ type Lead = {
 type Msg = { author: "lead" | "bot" | "admin"; body: string; created_at: string };
 
 const MODEL = "claude-opus-5-5";
+// Gemini (Google AI Studio, free tier): first model that exists for the key wins.
+const GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
 const TZ_OFFSET = "-03:00"; // Brasília (sem horário de verão)
 const MAX_BOT_TURNS = 4;
 const REPLY_HOURS = [8, 21]; // a IA só responde nesse intervalo (hora local)
@@ -294,29 +297,81 @@ Classifique a situação depois da última mensagem do cliente (intent) e escrev
 summary: uma linha para o ${name} saber o que o cliente quer (ex.: "Quer ver o sistema; tem 3 técnicos e hoje usa planilha").`;
 }
 
+class RateLimited extends Error {}
+
+function conversation(lead: Lead, msgs: Msg[], name: string) {
+  const transcript = msgs.map((m) => `${m.author === "lead" ? "Cliente" : name}: ${m.body}`).join("\n");
+  return `Empresa: ${lead.name}${lead.category ? ` (${lead.category})` : ""}${lead.address ? ` — ${lead.address}` : ""}\n\nConversa até agora:\n${transcript}\n\nDecida a próxima resposta.`;
+}
+
+function parseDecision(text: string): Decision {
+  const d = JSON.parse(text) as Decision;
+  const intents: Decision["intent"][] = ["interested", "question", "not_interested", "opt_out", "human_needed"];
+  return {
+    intent: intents.includes(d.intent) ? d.intent : "human_needed",
+    reply: String(d.reply ?? "").trim(),
+    summary: String(d.summary ?? "").trim(),
+  };
+}
+
+/** Gemini (Google AI Studio) with a JSON response schema. */
+async function decideGemini(key: string, system: string, prompt: string): Promise<Decision | null> {
+  for (const model of GEMINI_MODELS) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.6,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              intent: { type: "STRING", enum: ["interested", "question", "not_interested", "opt_out", "human_needed"] },
+              reply: { type: "STRING" },
+              summary: { type: "STRING" },
+            },
+            required: ["intent", "reply", "summary"],
+            propertyOrdering: ["intent", "reply", "summary"],
+          },
+        },
+      }),
+    });
+    if (res.status === 404) continue; // model not available for this key: try the next one
+    if (res.status === 429) throw new RateLimited("Gemini: limite gratuito atingido");
+    const body = await res.json().catch(() => ({})) as any;
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${String(body?.error?.message ?? "").slice(0, 200)}`);
+    const cand = body.candidates?.[0];
+    if (!cand || cand.finishReason === "SAFETY") return { intent: "human_needed", reply: "", summary: "A IA não quis responder esta conversa." };
+    const text = ((cand.content?.parts ?? []) as any[]).filter((p) => !p.thought).map((p) => p.text ?? "").join("");
+    return text ? parseDecision(text) : null;
+  }
+  throw new Error("Nenhum modelo Gemini disponível para esta chave.");
+}
+
 async function decide(cfg: Cfg, s: Settings, lead: Lead, msgs: Msg[], name: string): Promise<Decision | null> {
+  const system = systemPrompt(s.pitch, name);
+  const prompt = conversation(lead, msgs, name);
+  if (cfg.gemini_api_key) return decideGemini(cfg.gemini_api_key, system, prompt);
   if (!cfg.anthropic_api_key) return null;
   const client = new Anthropic({ apiKey: cfg.anthropic_api_key });
-  const transcript = msgs.map((m) => `${m.author === "lead" ? "Cliente" : name}: ${m.body}`).join("\n");
   const params: Record<string, unknown> = {
     model: MODEL,
     max_tokens: 4000,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     output_config: { effort: "low", format: { type: "json_schema", schema: DECISION_SCHEMA } },
-    system: systemPrompt(s.pitch, name),
-    messages: [{
-      role: "user",
-      content: `Empresa: ${lead.name}${lead.category ? ` (${lead.category})` : ""}${lead.address ? ` — ${lead.address}` : ""}\n\nConversa até agora:\n${transcript}\n\nDecida a próxima resposta.`,
-    }],
+    system,
+    messages: [{ role: "user", content: prompt }],
   };
   // deno-lint-ignore no-explicit-any
   const res = await client.beta.messages.create(params as any) as any;
   if (res.stop_reason === "refusal") return { intent: "human_needed", reply: "", summary: "A IA não quis responder esta conversa." };
   const text = (res.content as any[]).find((b) => b.type === "text")?.text;
-  if (!text) return null;
-  const d = JSON.parse(text) as Decision;
-  return { intent: d.intent, reply: String(d.reply ?? "").trim(), summary: String(d.summary ?? "").trim() };
+  return text ? parseDecision(text) : null;
 }
 
 async function answerDue(cfg: Cfg, s: Settings) {
@@ -343,9 +398,14 @@ async function answerDue(cfg: Cfg, s: Settings) {
     try {
       d = await decide(cfg, s, lead, (msgs ?? []) as Msg[], name);
     } catch (e) {
+      if (e instanceof RateLimited) {
+        // free-tier limit: answer a couple of minutes later instead of handing the lead off
+        await db.from("prospect_leads").update({ reply_due_at: new Date(Date.now() + rand(90, 180) * 1000).toISOString() }).eq("id", lead.id);
+        continue;
+      }
       console.error("ai", e instanceof Error ? e.message : e);
     }
-    if (!d) d = { intent: "human_needed", reply: "", summary: cfg.anthropic_api_key ? "A IA falhou ao responder." : "Chave da Anthropic não cadastrada." };
+    if (!d) d = { intent: "human_needed", reply: "", summary: cfg.gemini_api_key || cfg.anthropic_api_key ? "A IA falhou ao responder." : "Nenhuma chave de IA cadastrada." };
     const turns = lead.bot_turns + 1;
     if (d.intent === "question" && turns >= MAX_BOT_TURNS) d = { ...d, intent: "human_needed" };
 

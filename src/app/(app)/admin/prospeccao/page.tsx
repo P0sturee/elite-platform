@@ -56,7 +56,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
   const problems = [
     !waOpen && "O WhatsApp da Elite não está conectado (Configurações → Avisos).",
     !keys?.google && "Falta a chave do Google Places (Ajustes).",
-    !keys?.anthropic && "Falta a chave da Anthropic para a IA responder (Ajustes).",
+    !keys?.gemini && !keys?.anthropic && "Falta a chave do Gemini para a IA responder (Ajustes).",
   ].filter(Boolean) as string[];
 
   return (
@@ -218,8 +218,10 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
               <div className="grid gap-6 p-5">
                 <ProspectKeyForm name="google_places_key" label="Google Places" configured={!!keys?.google}
                   hint={<>Google Cloud → APIs → ative <b>Places API (New)</b> → Credenciais → Criar chave. Restrinja a chave a essa API.</>} />
-                <ProspectKeyForm name="anthropic_api_key" label="Anthropic (IA)" configured={!!keys?.anthropic}
-                  hint={<>console.anthropic.com → API Keys. A IA usa o Claude Opus 5.5 para entender e responder.</>} />
+                <ProspectKeyForm name="gemini_api_key" label="Gemini (IA grátis)" configured={!!keys?.gemini}
+                  hint={<>aistudio.google.com/apikey → Create API key. Cota gratuita, sem cartão. É a IA que entende e responde as empresas.</>} />
+                <ProspectKeyForm name="anthropic_api_key" label="Anthropic (opcional, pago)" configured={!!keys?.anthropic}
+                  hint={<>Só é usada se não houver chave do Gemini (Claude Opus 5.5, precisa de créditos em console.anthropic.com).</>} />
               </div>
             </Card>
             <Card>

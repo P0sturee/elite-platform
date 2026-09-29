@@ -23,7 +23,7 @@ export async function toggleProspecting(_: FormState, form: FormData): Promise<F
     const enable = str(form, "enabled") === "1";
     if (enable) {
       const { data: keys } = await supabase.rpc("prospect_integrations");
-      if (!keys?.google || !keys?.anthropic) return { error: "Cadastre as chaves do Google Places e da Anthropic em Ajustes antes de ligar." };
+      if (!keys?.google || !(keys?.gemini || keys?.anthropic)) return { error: "Cadastre as chaves do Google Places e do Gemini em Ajustes antes de ligar." };
       const { count } = await supabase.from("prospect_searches").select("id", { count: "exact", head: true }).eq("active", true);
       if (!count) return { error: "Adicione pelo menos uma busca (segmento + cidade) antes de ligar." };
       await call({ action: "setup" });
@@ -69,7 +69,7 @@ export async function saveProspectKey(_: FormState, form: FormData): Promise<For
     const { supabase } = await actionAdmin();
     const name = str(form, "name");
     const value = str(form, "value");
-    if (!["google_places_key", "anthropic_api_key"].includes(name)) return { error: "Chave inválida." };
+    if (!["google_places_key", "gemini_api_key", "anthropic_api_key"].includes(name)) return { error: "Chave inválida." };
     if (value && value.length < 20) return { error: "Essa chave parece incompleta." };
     const { error } = await supabase.rpc("prospect_save_key", { p_name: name, p_value: value });
     if (error) throw error;
