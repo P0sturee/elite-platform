@@ -54,6 +54,19 @@ Navegador ──▶ Next.js (Vercel, gru1) ──▶ Supabase (Auth, Postgres/RL
   que pede login/cadastro e chega com o formulário preenchido.
 - `www.` e `app.` redirecionam para o domínio principal.
 
+### Prospecção (robô do OrçaPro)
+Em **Admin → Prospecção** o robô busca empresas no Google Maps (Places API oficial), manda uma mensagem apresentando o
+OrçaPro pelo WhatsApp da Elite (Evolution API) e a IA (Claude Opus 5.5) responde e qualifica. Quem quer uma apresentação
+recebe "vou verificar o melhor horário" e aparece em **Precisam de você** (com aviso no sininho, e-mail e WhatsApp).
+
+- **Edge Function `prospect`** (`verify_jwt = false`): `action=tick` a cada minuto via pg_cron (`private.prospect_tick`),
+  webhook da Evolution em `/prospect?hook=<wa_webhook_secret>` (configurado ao ligar o robô) e ações do admin.
+- **Chaves** no Vault (`google_places_key`, `anthropic_api_key`), cadastradas pelo próprio painel (Ajustes).
+- **Proteções do número:** aquecimento (8 → 12 → 20 → 30 por dia nas 3 primeiras semanas, depois o limite escolhido, máx. 60),
+  envios espalhados no horário comercial com intervalo aleatório e "digitando…", só celulares conferidos no WhatsApp,
+  uma mensagem por empresa, "SAIR" respeitado, pausa automática se o WhatsApp cair ou 3 envios falharem, e o robô se cala
+  quando você responde pelo celular.
+
 ### DNS (Hostinger)
 | Tipo | Nome | Valor |
 | --- | --- | --- |

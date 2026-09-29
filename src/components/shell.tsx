@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
-  Bell, FolderKanban, Inbox, LayoutDashboard, LifeBuoy, LogOut, Menu, Settings, Sparkles, UserRound, Users, Wallet, X,
+  Bell, FolderKanban, Inbox, LayoutDashboard, LifeBuoy, LogOut, Menu, Radar, Settings, Sparkles, UserRound, Users, Wallet, X,
 } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
 import { Avatar, Logo, cx } from "./ui";
 
-const icons = { LayoutDashboard, FolderKanban, LifeBuoy, Sparkles, Bell, UserRound, Users, Inbox, Wallet, Settings };
+const icons = { LayoutDashboard, FolderKanban, LifeBuoy, Sparkles, Bell, UserRound, Users, Inbox, Wallet, Settings, Radar };
 export type NavItem = { href: string; label: string; icon: keyof typeof icons; badge?: number };
 
 function isActive(path: string, href: string) {

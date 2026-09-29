@@ -7,7 +7,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { supabase, profile } = await requireUser();
   const admin = profile.role === "admin";
 
-  const [{ data: notifications }, pendingApprovals, newRequests, openTickets] = await Promise.all([
+  const [{ data: notifications }, pendingApprovals, newRequests, openTickets, waitingLeads] = await Promise.all([
     supabase.from("notifications").select("*").eq("user_id", profile.id).order("created_at", { ascending: false }).limit(12),
     admin
       ? Promise.resolve({ count: 0 })
@@ -18,6 +18,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     admin
       ? supabase.from("tickets").select("id", { count: "exact", head: true }).in("status", ["open", "in_progress"])
       : supabase.from("tickets").select("id", { count: "exact", head: true }).eq("status", "waiting_client"),
+    admin
+      ? supabase.from("prospect_leads").select("id", { count: "exact", head: true }).in("status", ["interested", "replied"]).not("handoff_at", "is", null).eq("bot_paused", true)
+      : Promise.resolve({ count: 0 }),
   ]);
 
   const nav: NavItem[] = admin
@@ -27,6 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         { href: "/projetos", label: "Projetos", icon: "FolderKanban" },
         { href: "/admin/pedidos", label: "Pedidos", icon: "Inbox", badge: newRequests.count ?? 0 },
         { href: "/admin/financeiro", label: "Financeiro", icon: "Wallet" },
+        { href: "/admin/prospeccao", label: "Prospecção", icon: "Radar", badge: waitingLeads.count ?? 0 },
         { href: "/suporte", label: "Suporte", icon: "LifeBuoy", badge: openTickets.count ?? 0 },
         { href: "/notificacoes", label: "Notificações", icon: "Bell" },
         { href: "/admin/config", label: "Configurações", icon: "Settings" },

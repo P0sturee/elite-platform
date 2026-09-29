@@ -163,3 +163,65 @@ export interface Notification {
 }
 
 export type FormState = { ok?: boolean; error?: string; message?: string } | undefined;
+
+export type LeadStatus =
+  | "new" | "contacted" | "replied" | "interested" | "meeting" | "not_interested" | "opted_out" | "no_whatsapp" | "error";
+
+export interface ProspectLead {
+  id: string;
+  search_id: string | null;
+  place_id: string;
+  name: string;
+  phone: string;
+  category: string;
+  address: string;
+  website: string;
+  maps_url: string;
+  rating: number | null;
+  reviews: number | null;
+  status: LeadStatus;
+  bot_paused: boolean;
+  bot_turns: number;
+  summary: string;
+  error: string;
+  contacted_at: string | null;
+  last_inbound_at: string | null;
+  reply_due_at: string | null;
+  handoff_at: string | null;
+  created_at: string;
+}
+
+export interface ProspectMessage {
+  id: number;
+  lead_id: string;
+  direction: "in" | "out";
+  author: "lead" | "bot" | "admin";
+  body: string;
+  created_at: string;
+}
+
+export interface ProspectSearch {
+  id: string;
+  query: string;
+  active: boolean;
+  pages: number;
+  exhausted: boolean;
+  found: number;
+  last_error: string;
+  last_run_at: string | null;
+  created_at: string;
+}
+
+export interface ProspectSettings {
+  enabled: boolean;
+  daily_max: number;
+  window_start: number;
+  window_end: number;
+  weekdays_only: boolean;
+  warmup_started: string | null;
+  next_send_at: string | null;
+  paused_reason: string;
+  sender_name: string;
+  openers: string[];
+  pitch: string;
+}

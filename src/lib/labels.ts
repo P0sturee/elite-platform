@@ -1,5 +1,5 @@
 import type {
-  AccountStatus, ApprovalStatus, FileCategory, InstallmentStatus, ProjectStatus,
+  AccountStatus, ApprovalStatus, FileCategory, InstallmentStatus, LeadStatus, ProjectStatus,
   RequestStatus, StageStatus, TicketPriority, TicketStatus,
 } from "./types";
 
@@ -80,3 +80,22 @@ export const TEAM_SIZES = ["1–5", "6–20", "21–100", "100+"];
 export const PRIORITIES = ["Organizar o financeiro", "Vender mais", "Reduzir trabalho manual", "Lançar um produto"];
 export const BUDGETS = ["Até R$ 5 mil", "R$ 5–15 mil", "R$ 15–40 mil", "Acima de R$ 40 mil", "Ainda não sei"];
 export const DEADLINES = ["Até 1 mês", "1 a 3 meses", "3 a 6 meses", "Sem pressa"];
+
+export const leadStatus: Record<LeadStatus, { label: string; tone: Tone }> = {
+  new: { label: "Na fila", tone: "mute" },
+  contacted: { label: "Contatado", tone: "blue" },
+  replied: { label: "Respondeu", tone: "amber" },
+  interested: { label: "Quer apresentação", tone: "green" },
+  meeting: { label: "Reunião marcada", tone: "green" },
+  not_interested: { label: "Sem interesse", tone: "mute" },
+  opted_out: { label: "Pediu para sair", tone: "red" },
+  no_whatsapp: { label: "Sem WhatsApp", tone: "mute" },
+  error: { label: "Falha no envio", tone: "red" },
+};
+
+/** Messages per day while the number warms up (days since the first send), capped by the admin's limit. */
+export function prospectDailyLimit(warmupStarted: string | null, today: string, dailyMax: number) {
+  const day = warmupStarted ? Math.floor((Date.parse(today) - Date.parse(warmupStarted)) / 86_400_000) : 0;
+  const ramp = day < 3 ? 8 : day < 7 ? 12 : day < 14 ? 20 : day < 21 ? 30 : 60;
+  return { day: day + 1, limit: Math.min(ramp, dailyMax) };
+}
