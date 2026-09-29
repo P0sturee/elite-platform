@@ -68,10 +68,11 @@ function local(d = new Date()) {
 const atLocal = (date: string, hour: number, minute = 0) =>
   new Date(`${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00${TZ_OFFSET}`);
 
-// Warm-up: a new sender starts slow and grows over three weeks, never above the admin's daily cap.
+// The number is already warm; prospecting (messages to people who don't have it saved) still ramps up for a week,
+// never above the admin's daily cap.
 function dailyLimit(s: Settings, today: string) {
   const day = s.warmup_started ? Math.floor((Date.parse(today) - Date.parse(s.warmup_started)) / 86_400_000) : 0;
-  const ramp = day < 3 ? 8 : day < 7 ? 12 : day < 14 ? 20 : day < 21 ? 30 : 60;
+  const ramp = day < 2 ? 25 : day < 6 ? 35 : 80;
   return Math.min(ramp, s.daily_max);
 }
 

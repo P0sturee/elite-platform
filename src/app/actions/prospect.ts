@@ -32,7 +32,7 @@ export async function toggleProspecting(_: FormState, form: FormData): Promise<F
       .update({ enabled: enable, paused_reason: enable ? "" : "Pausado por você.", send_errors: 0 }).eq("id", 1);
     if (error) throw error;
     revalidatePath(PATH);
-    return { ok: true, message: enable ? "Robô ligado. Ele envia só em horário comercial, no ritmo do aquecimento." : "Robô pausado." };
+    return { ok: true, message: enable ? "Robô ligado. Ele envia só em horário comercial, no ritmo da primeira semana." : "Robô pausado." };
   } catch (e) {
     return fail(e);
   }
@@ -44,7 +44,7 @@ export async function saveProspectSettings(_: FormState, form: FormData): Promis
     const daily_max = Number(str(form, "daily_max"));
     const window_start = Number(str(form, "window_start"));
     const window_end = Number(str(form, "window_end"));
-    if (!(daily_max >= 5 && daily_max <= 60)) return { error: "O limite diário vai de 5 a 60 mensagens." };
+    if (!(daily_max >= 5 && daily_max <= 80)) return { error: "O limite diário vai de 5 a 80 mensagens." };
     if (!(window_start >= 6 && window_end <= 22 && window_end > window_start)) return { error: "Horário inválido: entre 6h e 22h, com o fim depois do início." };
     const openers = str(form, "openers").split(/\n\s*---\s*\n/).map((o) => o.trim()).filter(Boolean);
     if (!openers.length) return { error: "Escreva pelo menos uma mensagem de abertura." };

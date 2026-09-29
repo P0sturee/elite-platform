@@ -62,7 +62,7 @@ recebe "vou verificar o melhor horário" e aparece em **Precisam de você** (com
 - **Edge Function `prospect`** (`verify_jwt = false`): `action=tick` a cada minuto via pg_cron (`private.prospect_tick`),
   webhook da Evolution em `/prospect?hook=<wa_webhook_secret>` (configurado ao ligar o robô) e ações do admin.
 - **Chaves** no Vault (`google_places_key`, `anthropic_api_key`), cadastradas pelo próprio painel (Ajustes).
-- **Proteções do número:** aquecimento (8 → 12 → 20 → 30 por dia nas 3 primeiras semanas, depois o limite escolhido, máx. 60),
+- **Proteções do número** (já aquecido): 25 → 35 por dia na 1ª semana de prospecção, depois o limite escolhido (padrão 50, máx. 80),
   envios espalhados no horário comercial com intervalo aleatório e "digitando…", só celulares conferidos no WhatsApp,
   uma mensagem por empresa, "SAIR" respeitado, pausa automática se o WhatsApp cair ou 3 envios falharem, e o robô se cala
   quando você responde pelo celular.

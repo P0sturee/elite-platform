@@ -93,9 +93,9 @@ export const leadStatus: Record<LeadStatus, { label: string; tone: Tone }> = {
   error: { label: "Falha no envio", tone: "red" },
 };
 
-/** Messages per day while the number warms up (days since the first send), capped by the admin's limit. */
+/** Messages per day in the first prospecting week (days since the first send), capped by the admin's limit. */
 export function prospectDailyLimit(warmupStarted: string | null, today: string, dailyMax: number) {
   const day = warmupStarted ? Math.floor((Date.parse(today) - Date.parse(warmupStarted)) / 86_400_000) : 0;
-  const ramp = day < 3 ? 8 : day < 7 ? 12 : day < 14 ? 20 : day < 21 ? 30 : 60;
+  const ramp = day < 2 ? 25 : day < 6 ? 35 : 80;
   return { day: day + 1, limit: Math.min(ramp, dailyMax) };
 }

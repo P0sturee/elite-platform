@@ -30,8 +30,8 @@ export function ProspectSettingsForm({ settings }: { settings: ProspectSettings 
   return (
     <form action={action} className="grid gap-5 p-5">
       <div className="grid gap-5 sm:grid-cols-3">
-        <Field label="Limite por dia" htmlFor="daily_max" hint="Teto depois do aquecimento (5 a 60).">
-          <Input id="daily_max" name="daily_max" type="number" min={5} max={60} defaultValue={settings.daily_max} required />
+        <Field label="Limite por dia" htmlFor="daily_max" hint="Teto depois da 1ª semana (5 a 80).">
+          <Input id="daily_max" name="daily_max" type="number" min={5} max={80} defaultValue={settings.daily_max} required />
         </Field>
         <Field label="Começa às" htmlFor="window_start">
           <Select id="window_start" name="window_start" defaultValue={settings.window_start}>

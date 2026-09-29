@@ -92,7 +92,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
       </Card>
 
       <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Enviadas hoje" value={`${sentToday.count ?? 0}/${limit}`} hint={settings.warmup_started ? `Aquecimento: dia ${day}` : "Aquecimento começa no 1º envio"} />
+        <Stat label="Enviadas hoje" value={`${sentToday.count ?? 0}/${limit}`} hint={settings.warmup_started ? (day <= 6 ? `1ª semana: dia ${day}` : "Ritmo cheio") : "Começa no 1º envio"} />
         <Stat label="Na fila" value={queued.count ?? 0} hint="Empresas com celular" />
         <Stat label="Responderam" value={replied.count ?? 0} />
         <Stat label="Querem apresentação" value={interested.count ?? 0} tone="green" hint={interested.count ? "Esperando você" : undefined} />
@@ -226,7 +226,7 @@ export default async function ProspectingPage({ searchParams }: PageProps<"/admi
               <CardHeader eyebrow="Para não perder o número" title="Proteções ativas" />
               <ul className="grid gap-2.5 p-5 text-sm text-soft">
                 {[
-                  `Aquecimento: 8 por dia nos 3 primeiros dias, 12 até o 7º, 20 até o 14º, 30 até o 21º; depois o seu limite (${settings.daily_max}).`,
+                  `Número já aquecido: 25 por dia nos 2 primeiros dias de prospecção, 35 até o 6º e depois o seu limite (${settings.daily_max}).`,
                   "Envios espalhados pelo horário comercial, com intervalo aleatório e “digitando…”.",
                   "Só celulares, conferidos no WhatsApp antes do envio; nunca clientes da plataforma.",
                   "Uma única mensagem por empresa, sem insistir; quem responde SAIR não recebe mais nada.",
